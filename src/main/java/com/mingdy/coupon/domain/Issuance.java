@@ -1,6 +1,9 @@
 package com.mingdy.coupon.domain;
 
 import jakarta.persistence.*;
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
@@ -18,6 +21,8 @@ import java.time.LocalDateTime;
                 @Index(name = "idx_issuance_coupon", columnList = "coupon_id")
         }
 )
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Issuance {
 
     @Id
@@ -42,5 +47,33 @@ public class Issuance {
 
     @Column(name = "used_at")
     private LocalDateTime usedAt;
+
+    public Issuance(
+            long userId,
+            long couponId,
+            LocalDateTime issuedAt,
+            LocalDateTime expiresAt
+    ) {
+        this(null, userId, couponId, issuedAt, expiresAt, IssuanceStatus.ISSUED, null);
+    }
+
+    public Issuance(
+            Long id,
+            long userId,
+            long couponId,
+            LocalDateTime issuedAt,
+            LocalDateTime expiresAt,
+            IssuanceStatus status,
+            LocalDateTime usedAt
+    ) {
+        this.userId = userId;
+        this.couponId = couponId;
+        this.issuedAt = issuedAt;
+        this.expiresAt = expiresAt;
+        this.status = status;
+        this.usedAt = usedAt;
+        this.id = id;
+    }
+
 
 }
