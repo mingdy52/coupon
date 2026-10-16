@@ -62,4 +62,15 @@ public class Coupon {
         this.id = id;
     }
 
+    public boolean isBookingOpen(LocalDateTime now) {
+        return startsAt == null || !now.isBefore(startsAt);
+    }
+
+    public boolean isSoldOut() {
+        return issuedQuantity >= totalQuantity;
+    }
+
+    public void incrementIssuedQuantity() {
+        this.issuedQuantity++;
+    }
 }

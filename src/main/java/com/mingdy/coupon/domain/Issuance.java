@@ -75,5 +75,12 @@ public class Issuance {
         this.id = id;
     }
 
+    public boolean isExpired(LocalDateTime now) {
+        return !now.isBefore(expiresAt);
+    }
 
+    public void markUsed(LocalDateTime now) {
+        this.status = IssuanceStatus.USED;
+        this.usedAt = now;
+    }
 }
