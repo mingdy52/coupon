@@ -127,4 +127,67 @@ git switch <branch>
 - **비용:** 모든 발급 요청이 쿠폰 행 하나에서 줄을 선다. 처리량이 29% 줄고 p95 는 2.4배 늘었다. 락을 기다리는 동안 DB 커넥션도 붙잡고 있어 다른 API까지 느려질 수 있다.
 
 
+### 3. Redis Lua (`study1/concurrency-3-redis-lua`)
 
+**기준선에서 바꾼 것**
+- 쿠폰 생성 시 Redis 에 재고 키(`coupon:{id}:stock`)를 초기화
+- 발급 시 Lua 스크립트로 재고 확인 + 차감을 원자적으로 실행 → 통과한 요청만 DB 발급
+- `issued_quantity` 증가를 엔티티 변경 대신 `UPDATE ... SET issued_quantity = issued_quantity + 1` 로 변경
+- k6 시나리오, 고정 데이터는 기준선 2차와 동일
+
+| issued_quantity | total_quantity | issuance_rows | duplicate_users | over_issuance | count_match |
+|---:|---:|---:|---:|:---:|:---:|
+| 4,997 | 5,000 | 4,997 | 0 | OK | OK |
+
+| 지표 | 값 | 비관적 락 대비 |
+|---|---|---|
+| 소요 시간 | 13.4s | 16.2s → 13.4s (-17%) |
+| 처리량 | 744 req/s | 617 → 744 req/s (+21%) |
+| http_req_duration | avg 667ms / med 757ms / p95 1.32s / max 4.37s | p95 1.7s → 1.32s (-22%) |
+| 성공 요청 duration | avg 1.03s / med 947ms / p95 1.71s / max 4.37s | p95 1.83s → 1.71s |
+| http_req_failed | 50.02% (5,003 / 10,000) | 50.00% → 50.02% |
+
+**분석**
+- **과발급 차단:** Redis 재고가 0 이 된 뒤 요청은 모두 거절
+- **카운터 정합성:** 원자적 UPDATE 로 `issued_quantity` 와 실제 발급 수가 일치
+- **중복 발급:** UNIQUE 제약이 막아 `duplicate_users = 0`
+- **과소 발급 3건:** Redis 재고는 0 인데 DB 발급은 4,997건
+  - 같은 사용자의 동시 요청 2건이 모두 중복 확인(`exists`)을 통과하고 Redis 재고를 차감
+  - 한 건이 INSERT 에서 UNIQUE 제약에 걸려 DB 는 롤백, Redis 재고는 차감된 채 남음
+  - 앱 로그의 `Duplicate entry` 3건과 일치
+  ```bash
+  # Redis 남은 재고 → 0 (5,000장 모두 통과)
+  docker compose exec -T redis redis-cli get coupon:1:stock
+
+  # UNIQUE 제약 위반 → 3건 ('사용자ID-쿠폰ID')
+  docker compose logs coupon-service | grep -o "Duplicate entry '[0-9-]*'" | sort -u
+  ```
+- **속도 향상이 크지 않음:** 재고 판단은 Redis 로 옮겼지만 요청마다 DB 작업(조회, 중복 확인, UPDATE, INSERT)은 그대로다. UPDATE 가 잡은 쿠폰 행 락은 커밋까지 유지돼 INSERT 동안에도 다른 발급이 대기한다.
+- **해결 방법:** 실패 시 Redis 재고를 되돌리는 보상 처리, 중복 확인도 Redis 로 옮기기(`SADD`)
+
+
+## 비교
+
+| 방식 | 막는 위치 | 줄 서는 구간 | 재고 판단 기준 | 장점 | 남는 비용 |
+|---|---|---|---|---|---|
+| DB 비관락 | 쿠폰 조회(`FOR UPDATE`) ~ 커밋 | 트랜잭션 전체 | DB `issued_quantity` | 추가 인프라 없이 정확함 | 락 대기 동안 DB 커넥션 점유, 다른 API 까지 느려질 수 있음 |
+| Redis 분산 락 | 락 획득 ~ 해제 | 발급 구간 전체 (임계영역이 넓음) | DB `issued_quantity` | DB 행 락 부담 감소, 여러 서버·자원을 하나로 묶을 수 있음 | 락 획득/해제 왕복, 락 만료·해제 실패 처리 필요 |
+| Redis 원자 연산 (Lua) | DB 쓰기 전 | Lua 스크립트 1회 (+ UPDATE ~ 커밋) | Redis 재고 키 | 락 대기 없이 성공 수를 재고만큼 제한 | DB 저장은 동기, Redis ↔ DB 불일치 시 보상 처리 필요 |
+
+### 측정 결과
+
+| 항목 | 락 없음 (2차) | DB 비관락 | Redis 원자 연산 (Lua) |
+|---|---:|---------------:|--:|
+| 발급 수 / 재고 | 7,840 / 5,000 |  5,000 / 5,000 | 4,997 / 5,000 |
+| over_issuance | FAIL |             OK | OK |
+| count_match | FAIL |             OK | OK |
+| 소요 시간 | 11.5s |          16.2s | 13.4s |
+| 처리량 | 868 req/s |      617 req/s | 744 req/s |
+| p95 | 713ms |           1.7s | 1.32s |
+
+### 정리
+- **락 없음:** 가장 빠르지만 카운터 유실로 과발급
+- **DB 비관락:** 정확하지만 모든 요청이 쿠폰 행 하나에서 줄을 서서 가장 느림
+- **Redis 원자 연산:** 비관락보다 처리량 +21%, p95 -22%. 단 DB 실패 시 Redis 재고가 복구되지 않아 과소 발급 3건
+
+> Lua 에 중복 확인(`SADD`)과 보상 처리를 넣어 과소 발급을 없애고, DB 저장을 비동기로 분리하면 남은 대기 구간도 줄일 수 있음
