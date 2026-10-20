@@ -38,8 +38,10 @@ public class CouponService {
 
     @Transactional
     public Issuance issue(long couponId, long userId) {
-        Coupon coupon = couponRepository.findById(couponId)
-                .orElseThrow(CouponNotFoundException::new);
+        Coupon coupon = couponRepository.findByIdForUpdate(couponId);
+        if (coupon == null) {
+            throw new CouponNotFoundException();
+        }
 
         LocalDateTime now = LocalDateTime.now();
         if (!coupon.isBookingOpen(now)) {
