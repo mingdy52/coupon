@@ -167,3 +167,32 @@ Worker 가 큐를 다 비울 때까지(발급 수가 3초간 변하지 않을 �
 - **과소 발급 없음:** Lua 에서 중복 사용자를 먼저 거르므로(`SISMEMBER`) 같은 사용자 동시 요청이 UNIQUE 에 걸려 500 이 나던 경로가 사라짐. `status_other = 0`, 5,000 / 5,000 발급
 - **정합성 유지:** Worker 드레인 후 `issuance_rows = issued_quantity = 5,000`
 - **남은 문제 (내구성):** 응답 200 은 "큐에 넣음"이지 "DB 저장 완료"가 아니다. 드레인 전에 JVM 이 죽으면 Redis 재고는 차감됐는데 DB 에는 없는 발급이 생긴다.
+
+### 3. 스프링 이벤트(`study2/latency-3-spring-event`)
+
+**설정:** 3차와 동일 (`RATE=3000`, `MAX_VUS=5000`)
+
+**인메모리에서 바꾼 것:** 직접 만든 큐(`InMemoryIssuanceQueue`)와 Worker 루프를 지우고 `ApplicationEventPublisher.publishEvent` + `@Async @EventListener` 로 교체. Executor 는 스레드 1개(`core = max = 1`), 큐 10,000 으로 인메모리와 같은 구조다.
+
+| issued_quantity | total_quantity | issuance_rows | over_issuance | count_match |
+|---:|---:|---:|:---:|:---:|
+| 5,000 | 5,000 | 5,000 | OK | OK |
+
+| 지표 | 동기 (3차) | 인메모리 | 스프링 이벤트 |
+|---|---|---|---|
+| 처리량 | 2,458 req/s | 3,000 req/s | 3,000 req/s |
+| dropped_iterations | 16,255 | 0 | 0 |
+| conn_reset | 0 | 0 | 0 |
+| 최대 동시 VU | 5,000 (소진) | 40 | 157 |
+| issue_latency (전체) | avg 577ms / med 1.59ms / p95 4.72s / **p99 5.93s** / max 6.33s | avg 2.58ms / med 1.47ms / p95 6.27ms / **p99 29.01ms** / max 126.79ms | avg 6.21ms / med 1.45ms / p95 17.61ms / **p99 124.08ms** / max 602.76ms |
+| 성공 요청 latency | avg 3.6s / med 3.94s / p95 5.9s / max 6.2s | avg 7.03ms / med 1.98ms / p95 28.14ms / max 81.97ms | avg 54.57ms / med 6.53ms / p95 221.67ms / max 602.76ms |
+| status_2xx | 4,997 | 5,000 | 5,000 |
+| status_409 (매진·중복) | 68,746 | 85,001 | 85,001 |
+| status_other | 3 | 0 | 0 |
+
+**분석**
+- **임계 통과:** p99 124.08ms 로 목표 500ms 안. `dropped_iterations = 0`, 5,000 / 5,000 발급, 정합성 유지
+- **스프링 이벤트는 인메모리 큐를 스프링이 대신 관리하는 것:** `@Async` Executor 도 스레드 1개 + 메모리 큐(10,000)라 구조가 같다. 직접 만든 큐, Worker 루프, 스레드 종료 처리가 사라지고 핸들러는 한 줄만 남는다.
+- **성능 차이는 확인되지 않음:** 중간값은 같고(1.45ms) p99 는 124ms 로 더 높게 나왔지만, 구조가 같아 1회 측정의 편차일 수 있다. 원인은 확인하지 않았다.
+- **큐 포화 처리는 직접 챙겨야 함:** 큐가 차면 Executor 가 `TaskRejectedException` 을 던지는데 처리하는 핸들러가 없어 503 이 아닌 일반 오류가 된다.
+- **내구성은 그대로:** 이벤트도 JVM 메모리에 있어 프로세스가 강제 종료되면(`kill -9`, OOM) 발급이 유실된다. 종료 시 30초 대기는 정상 종료에서만 동작한다. 발급 방식을 바꾸는 게 아니라 큐를 JVM 밖으로 빼야 해결된다.
