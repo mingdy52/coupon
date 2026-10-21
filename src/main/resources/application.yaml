@@ -13,13 +13,13 @@ spring:
     hibernate:
       ddl-auto: update
     open-in-view: false
-    show-sql: true
+    show-sql: false
   mvc:
     problemdetails:
       enabled: true
 
 logging:
   level:
-    com.mingdy.coupon: DEBUG
-    org.hibernate.SQL: DEBUG
-    org.hibernate.orm.jdbc.bind: TRACE
+    com.mingdy.coupon: INFO
+    org.hibernate.SQL: WARN
+    org.hibernate.orm.jdbc.bind: WARN
