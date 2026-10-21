@@ -25,10 +25,11 @@ public class CouponIssuer {
 
     // 사용자 중복 검증 + 재고 검증 + 재고 차감 + 사용자 등록을 Lua 한 덩어리로 atomic 실행.
     // 실패 시 도메인 예외를 던진다.
-    public void tryIssue(long couponId) {
+    public void tryIssue(long couponId, long userId) {
         Long raw = redisTemplate.execute(
                 script,
-                List.of(stockKey(couponId), usersKey(couponId))
+                List.of(stockKey(couponId), usersKey(couponId)),
+                String.valueOf(userId)
         );
 
         if(raw == null) throw new IllegalStateException("Lua 스크립트 결과가 null");

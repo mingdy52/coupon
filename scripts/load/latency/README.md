@@ -7,7 +7,7 @@ git switch <branch>
 ```
 
 ## latency
-[](latency.png)
+![latency](latency.png)
 redis에서 발급 판정을 마치고 쿠폰 발급 이벤트를 적재한다. 그리고 200 응답을 반환한다.
 Worker가 항상 별도로 존재하고 이벤트가 들어오면 그 메시지를 소비해서 쿠폰 발급 DB 작업을 실행한다.
 
@@ -138,3 +138,32 @@ Worker 가 큐를 다 비울 때까지(발급 수가 3초간 변하지 않을 �
 - **연결 끊김 없음:** Tomcat 연결 한도(8,192) 안이라 `conn_reset = 0`
 - **과소 발급 3건:** `status_other` 3건과 일치
 - **비동기 브랜치에서 볼 것:** 성공 요청 latency, p99, `dropped_iterations` 가 줄어드는가
+
+
+### 2. 인메모리(`study2/latency-2-inmemory-queue`)
+
+**설정:** 3차와 동일 (`RATE=3000`, `MAX_VUS=5000`)
+
+| issued_quantity | total_quantity | issuance_rows | over_issuance | count_match |
+|---:|---:|---:|:---:|:---:|
+| 5,000 | 5,000 | 5,000 | OK | OK |
+
+| 지표 | 동기 (3차) | 인메모리 |
+|---|---|---|
+| 처리량 | 2,458 req/s | 3,000 req/s (목표 3,000) |
+| dropped_iterations | 16,255 | 0 |
+| conn_reset | 0 | 0 |
+| 최대 동시 VU | 5,000 (소진) | 40 |
+| issue_latency (전체) | avg 577ms / med 1.59ms / p95 4.72s / **p99 5.93s** / max 6.33s | avg 2.58ms / med 1.47ms / p95 6.27ms / **p99 29.01ms** / max 126.79ms |
+| 성공 요청 latency | avg 3.6s / med 3.94s / p95 5.9s / max 6.2s | avg 7.03ms / med 1.98ms / p95 28.14ms / max 81.97ms |
+| status_2xx | 4,997 | 5,000 |
+| status_409 (매진·중복) | 68,746 | 85,001 |
+| status_other | 3 | 0 |
+
+**분석**
+- **임계 통과:** p99 29.01ms 로 목표 500ms 안. 동기 5.93s 대비 약 200배 감소
+- **성공 요청도 빨라짐:** 성공 요청 중간값 `3.94s → 1.98ms`. 요청 스레드는 Redis 판정 후 큐에 넣고 바로 응답하고, DB 저장은 Worker 가 뒤에서 한다.
+- **목표 부하를 다 받음:** 응답이 빨라 VU 가 최대 40개만 쓰였고 `dropped_iterations = 0`. 모든 요청이 레이턴시에 기록돼 같은 부하에서 비교할 수 있다.
+- **과소 발급 없음:** Lua 에서 중복 사용자를 먼저 거르므로(`SISMEMBER`) 같은 사용자 동시 요청이 UNIQUE 에 걸려 500 이 나던 경로가 사라짐. `status_other = 0`, 5,000 / 5,000 발급
+- **정합성 유지:** Worker 드레인 후 `issuance_rows = issued_quantity = 5,000`
+- **남은 문제 (내구성):** 응답 200 은 "큐에 넣음"이지 "DB 저장 완료"가 아니다. 드레인 전에 JVM 이 죽으면 Redis 재고는 차감됐는데 DB 에는 없는 발급이 생긴다.

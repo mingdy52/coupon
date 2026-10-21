@@ -4,10 +4,9 @@ import com.mingdy.coupon.domain.Issuance;
 import com.mingdy.coupon.domain.IssuanceStatus;
 
 import java.time.LocalDateTime;
-import java.util.Objects;
 
 public record IssuanceResponse(
-        long id,
+        Long id, // 비동기 발급: Worker 저장 전이라 null
         long userId,
         long couponId,
         IssuanceStatus status,
@@ -18,7 +17,7 @@ public record IssuanceResponse(
 
     public static IssuanceResponse from(Issuance issuance) {
         return new IssuanceResponse(
-                Objects.requireNonNull(issuance.getId()),
+                issuance.getId(),
                 issuance.getUserId(),
                 issuance.getCouponId(),
                 issuance.getStatus(),
