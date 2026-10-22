@@ -9,10 +9,8 @@ public record CouponResponse(
         long id,
         String name,
         int totalQuantity,
-        int issuedQuantity,
         int validityDays,
-        LocalDateTime startsAt,
-        LocalDateTime createdAt
+        LocalDateTime startsAt
 ) {
 
     public static CouponResponse from(Coupon coupon) {
@@ -20,10 +18,8 @@ public record CouponResponse(
                 Objects.requireNonNull(coupon.getId()),
                 coupon.getName(),
                 coupon.getTotalQuantity(),
-                coupon.getIssuedQuantity(),
                 coupon.getValidityDays(),
-                coupon.getStartsAt(),
-                coupon.getCreatedAt()
+                coupon.getStartsAt()
         );
     }
 
