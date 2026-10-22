@@ -4,11 +4,11 @@ import com.mingdy.coupon.api.dto.CreateCouponRequest;
 import com.mingdy.coupon.domain.Coupon;
 import com.mingdy.coupon.domain.CouponRepository;
 import com.mingdy.coupon.domain.Issuance;
+import com.mingdy.coupon.infrastructure.messaging.IssuanceRequestProducer;
 import com.mingdy.coupon.infrastructure.messaging.IssuanceRequested;
 import com.mingdy.coupon.support.CouponNotFoundException;
 import com.mingdy.coupon.support.NotStartedException;
 import lombok.RequiredArgsConstructor;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,7 +22,8 @@ public class CouponService {
     private final CouponRepository couponRepository;
     private final CouponIssuer couponIssuer;
     // private final InMemoryIssuanceQueue inMemoryIssuanceQueue;
-    private final ApplicationEventPublisher eventPublisher;
+    // private final ApplicationEventPublisher eventPublisher;
+    private final IssuanceRequestProducer issuanceRequestProducer;
 
 
     @Transactional
@@ -53,7 +54,7 @@ public class CouponService {
         couponIssuer.tryIssue(couponId, userId);
 
         LocalDateTime expiresAt = now.plusDays(coupon.getValidityDays());
-        eventPublisher.publishEvent(
+        issuanceRequestProducer.publish(
                 new IssuanceRequested(
                         couponId,
                         userId,
