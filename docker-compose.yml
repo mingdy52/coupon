@@ -82,6 +82,10 @@ services:
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      # stampede 데모 기본값 1초. 셸에서 COUPON_CACHE_TTL_MS=10000 으로 오버라이드 가능.
+      COUPON_CACHE_TTL_MS: ${COUPON_CACHE_TTL_MS:-1000}
+      # issue 쿠폰 정보 조회의 stampede 차이를 보이기 위한 DB latency 시뮬레이션.
+      COUPON_CACHE_SIMULATED_LOAD_LATENCY_MS: ${COUPON_CACHE_SIMULATED_LOAD_LATENCY_MS:-50}
     ports:
       - "8080:8080"
 
