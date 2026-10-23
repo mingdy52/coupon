@@ -24,6 +24,7 @@ coupon:
   cache:
     ttl-ms: ${COUPON_CACHE_TTL_MS:1000}
     simulated-load-latency-ms: ${COUPON_CACHE_SIMULATED_LOAD_LATENCY_MS:50}
+    fresh-ms: ${COUPON_CACHE_FRESH_MS:500}
 
 logging:
   level:

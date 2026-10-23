@@ -86,6 +86,8 @@ services:
       COUPON_CACHE_TTL_MS: ${COUPON_CACHE_TTL_MS:-1000}
       # issue 쿠폰 정보 조회의 stampede 차이를 보이기 위한 DB latency 시뮬레이션.
       COUPON_CACHE_SIMULATED_LOAD_LATENCY_MS: ${COUPON_CACHE_SIMULATED_LOAD_LATENCY_MS:-50}
+      # SWR fresh 구간. TTL(1초) 의 절반이 지나면 stale 로 보고 백그라운드 갱신을 시작한다.
+      COUPON_CACHE_FRESH_MS: ${COUPON_CACHE_FRESH_MS:-500}
     ports:
       - "8080:8080"
 
