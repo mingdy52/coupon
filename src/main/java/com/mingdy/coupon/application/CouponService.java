@@ -7,6 +7,7 @@ import com.mingdy.coupon.domain.Issuance;
 import com.mingdy.coupon.infrastructure.messaging.IssuanceRequestProducer;
 import com.mingdy.coupon.infrastructure.messaging.IssuanceRequested;
 import com.mingdy.coupon.support.NotStartedException;
+import com.mingdy.coupon.support.SoldOutException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +23,7 @@ public class CouponService {
     private final CouponIssuePolicyReader couponIssuePolicyReader;
     private final CouponIssuer couponIssuer;
     private final IssuanceRequestProducer issuanceRequestProducer;
+    private final SoldOutState soldOutState;
 
     @Transactional
     public Coupon createCoupon(CreateCouponRequest request) {
@@ -40,6 +42,9 @@ public class CouponService {
 
     @Transactional
     public Issuance issue(long couponId, long userId) {
+        // 매진이 확실하면 쿠폰 정보 조회, Lua 발급 스크립트까지 가지 않고 바로 거절한다.
+        if(soldOutState.isSoldOut(couponId)) throw new SoldOutException();
+
         // 쿠폰 정보는 캐시에서 읽는다. 캐시 미스일 때만 DB를 조회한다.
         CouponIssuePolicy policy = couponIssuePolicyReader.get(couponId);
 
