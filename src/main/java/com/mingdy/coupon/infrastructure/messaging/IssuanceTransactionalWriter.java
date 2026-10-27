@@ -33,6 +33,10 @@ public class IssuanceTransactionalWriter {
 
     @Transactional
     public void insertAndIncrement(IssuanceRequested event) {
+        if (issuanceRepository.existsByUserIdAndCouponId(event.getUserId(), event.getCouponId())) {
+            return;
+        }
+
         issuanceRepository.save(
                 new Issuance(
                         event.getUserId(),
@@ -42,6 +46,11 @@ public class IssuanceTransactionalWriter {
                 )
         );
         couponRepository.incrementIssuedQuantity(event.getCouponId());
+    }
+
+    @Transactional(readOnly = true)
+    public boolean isAlreadyApplied(IssuanceRequested event) {
+        return issuanceRepository.existsByUserIdAndCouponId(event.getUserId(), event.getCouponId());
     }
 
 }

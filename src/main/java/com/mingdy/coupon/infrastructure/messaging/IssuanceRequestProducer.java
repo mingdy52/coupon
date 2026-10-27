@@ -4,6 +4,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+
 // 프로듀서: 발급 요청을 카프카 토픽에 보낸다.
 // 인메모리 큐의 enqueue(), 스프링 이벤트의 publishEvent() 자리에 해당한다.
 @Component
@@ -27,4 +31,15 @@ public class IssuanceRequestProducer {
         kafkaTemplate.send(IssuanceTopics.REQUESTED, String.valueOf(event.getUserId()), event);
     }
 
+    public void publishAndWait(IssuanceRequested event) {
+        try {
+            kafkaTemplate.send(IssuanceTopics.REQUESTED, String.valueOf(event.getUserId()), event)
+                    .get(10, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        } catch (ExecutionException | TimeoutException e) {
+            throw new IllegalStateException(e);
+        }
+    }
 }

@@ -20,6 +20,10 @@ public class IssuanceWriter {
         try {
             issuanceTransactionalWriter.insertAndIncrement(event);
         } catch (DataIntegrityViolationException e) {
+            if (!issuanceTransactionalWriter.isAlreadyApplied(event)) {
+                throw e;
+            }
+
             // DataIntegrityViolationException: 중복 삽입이면 unique로 걸릴 때 발생하는 에러
             // 에러를 그대로 내보내면 워커가 재처리를 시도함.
             // 트랜잭션이 이미 끝난(롤백된) 뒤 바깥에서 잡는 구조라 여기서 삼켜도 안전함.

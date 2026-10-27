@@ -144,3 +144,25 @@ gantt
 | `force_dlt.sh` | 0 | 4,990 | 10 | 10 | 0 | DB 저장 실패 → DLT 재처리 대상 |
 | `force_db_only.sh` | 10 | 4,990 | 0 | 0 | 10 | Redis 명단 누락 → 대사 자동 보정 대상 |
 
+### 2. DLT 재처리 (`study4/consistency-2-dlt-replay`)
+
+**1단계에서 바꾼 것**
+
+| 구분 | 내용 |
+|---|---|
+| DLT 기록 | `IssuanceDltLogConsumer`가 DLT를 구독하고, `IssuanceDltService`가 원문(`payload`)과 실패 원인(`DLT_EXCEPTION_MESSAGE` 헤더)을 `issuance_dlt_log`에 `PENDING`으로 저장 |
+| 중복 기록 방지 | `토픽:파티션:오프셋`을 `message_key`로 두고, 이미 있으면 다시 저장하지 않음 |
+| 기록 실패 시 | DLT 전용 컨테이너가 5초 간격으로 무한 재시도. 오프셋을 커밋하지 않아 DB가 복구되면 그 메시지부터 다시 기록 |
+| 운영자 API | `GET /admin/issuance/dlt`로 최근 100건 조회, `POST /admin/issuance/dlt/replay`로 고른 ID만 재처리 |
+| 재처리 | 고른 로그를 비관적 락으로 잡고 `PENDING`인지 확인한 뒤, 받은 순서대로 원본 토픽에 재발행(전송 확인까지 대기)하고 `REPLAYED`로 변경. 한 번에 최대 100건 |
+| 워커 멱등성 | 이미 DB에 발급된 사용자·쿠폰이면 저장을 건너뜀. UNIQUE 위반도 실제로 이미 발급된 경우에만 무시하고, 그 외에는 예외를 다시 던짐 |
+| `reset.sh` | `issuance_dlt_log` 테이블이 있으면 함께 비움 |
+
+| 항목 | 기대 | 결과 |
+|---|---|---|
+| 재처리 후 DB 발급 기록 | 1 | ✓ 1 |
+| `issuance_dlt_log` 상태 | `REPLAYED` | ✓ `REPLAYED` |
+
+**분석**
+- DLT 메시지가 `issuance_dlt_log`에 `PENDING`으로 기록되고, 운영자가 고른 메시지만 원본 토픽에 재발행됐다.
+- 워커가 재발행된 메시지를 처리해 Redis에만 있던 발급이 DB에 저장됐다.

@@ -3,6 +3,7 @@ package com.mingdy.coupon.infrastructure.messaging;
 import java.util.Map;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.springframework.beans.factory.annotation.Value;
@@ -20,6 +21,7 @@ import org.springframework.kafka.support.JacksonMapperUtils;
 import org.springframework.kafka.support.serializer.ErrorHandlingDeserializer;
 import org.springframework.kafka.support.serializer.JacksonJsonDeserializer;
 import org.springframework.kafka.support.serializer.JacksonJsonSerializer;
+import org.springframework.util.backoff.FixedBackOff;
 import tools.jackson.databind.json.JsonMapper;
 
 // 프로듀서(보내는 쪽)와 컨슈머(받는 쪽)를 어떻게 만들지 정하는 설정.
@@ -120,4 +122,28 @@ public class KafkaConfig {
         // (카프카 클라이언트의 "몇 초마다 자동 커밋"은 스프링이 꺼둔다 → 처리 전에 커밋돼서 유실되는 걸 막음)
         return factory;
     }
+
+    @Bean
+    public ConsumerFactory<String, byte[]> dltConsumerFactory() {
+        Map<String, Object> props = Map.of(
+                ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers,
+                ConsumerConfig.GROUP_ID_CONFIG, "issuance-dlt-log",
+                ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest"
+        );
+        return new DefaultKafkaConsumerFactory<>(props, new StringDeserializer(), new ByteArrayDeserializer());
+    }
+
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, byte[]> dltKafkaListenerContainerFactory(
+            ConsumerFactory<String, byte[]> dltConsumerFactory
+    ) {
+        ConcurrentKafkaListenerContainerFactory<String, byte[]> factory =
+                new ConcurrentKafkaListenerContainerFactory<>();
+        factory.setConsumerFactory(dltConsumerFactory);
+        factory.setCommonErrorHandler(
+                new DefaultErrorHandler(new FixedBackOff(5_000L, FixedBackOff.UNLIMITED_ATTEMPTS))
+        );
+        return factory;
+    }
+
 }
