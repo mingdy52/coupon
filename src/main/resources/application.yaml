@@ -30,6 +30,12 @@ coupon:
     ttl-seconds: ${COUPON_SOLD_OUT_TTL_SECONDS:86400}
     # Application fast-path (Caffeine) TTL. 매진 직후 이 시간만큼 실제 매진을 아직 모를 수 있음.
     fast-path-ttl-ms: ${COUPON_SOLD_OUT_FAST_PATH_TTL_MS:1000}
+  reconcile:
+    # 정합성 점검 배치 주기. 매 분 1회. 발급 시각 window 한 칸의 너비이기도 하다.
+    interval-ms: ${COUPON_RECONCILE_INTERVAL_MS:60000}
+    # 발급 시각 window 상한 여유분. 방금 발급돼 DB 가 아직 안 따라온 쿠폰은 cutoff(now - grace) 이후라 제외된다.
+    grace-period-ms: ${COUPON_RECONCILE_GRACE_PERIOD_MS:10000}
+
 
 logging:
   level:

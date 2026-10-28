@@ -22,7 +22,8 @@ public class IssuanceRedisRepository {
     private final RedisScript<Long> issueScript = longLuaScript("lua/issue.lua");
 
     // 반환: 1=성공, 0=매진, -1=중복 발급
-    // KEYS: 재고 카운터, 발급 사용자 set, 매진 플래그 / ARGV: 사용자 ID, 매진 플래그 TTL(초)
+    // KEYS: 재고 카운터, 발급 사용자 set, 매진 플래그, 최근 발급 쿠폰 ZSET(reconcile 대상)
+    // ARGV: 사용자 ID, 매진 플래그 TTL(초), 발급 시각(ms, ZSET score), 쿠폰 ID(ZSET member)
     public long tryIssue(long couponId, long userId) {
         return runForLong(
                 redisTemplate,
@@ -30,10 +31,13 @@ public class IssuanceRedisRepository {
                 List.of(
                         stockKey(couponId),
                         "coupon:" + couponId + ":users",
-                        "coupon:" + couponId + ":sold_out"
+                        "coupon:" + couponId + ":sold_out",
+                        "coupon:reconcile:recent"
                 ),
                 userId,
-                soldOutProperties.ttlSeconds()
+                soldOutProperties.ttlSeconds(),
+                System.currentTimeMillis(),
+                couponId
         );
     }
 

@@ -22,6 +22,8 @@ end
 
 redis.call('DECR', KEYS[1])
 redis.call('SADD', KEYS[2], ARGV[1])
+-- 대사 sliding window 인덱스: 쿠폰별 최신 발급 시각을 score 로 (member 는 couponId, ZADD 가 갱신).
+redis.call('ZADD', KEYS[4], ARGV[3], ARGV[4])
 
 -- 차감 전 재고가 1 이었다면 이 요청이 마지막 재고를 가져간 것 → 매진 플래그 세팅.
 -- 재고 차감과 같은 스크립트 안이라 "재고 0 인데 플래그 없음" 같은 중간 상태가 보이지 않는다.
