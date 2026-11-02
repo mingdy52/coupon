@@ -103,6 +103,25 @@ services:
     ports:
       - "127.0.0.1:8081:8080"
 
+  # API Gateway. 어뷰저를 대기실 진입과 발급 앞에서 사용자별로 컷. 이미지 빌드: ./gradlew jibDockerBuild
+  gateway:
+    image: coupon-gateway:latest
+    depends_on:
+      redis:
+        condition: service_healthy
+      coupon-service:
+        condition: service_started
+    environment:
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      COUPON_SERVICE_URI: http://coupon-service:8080
+      # 한 사용자는 초당 5번, 순간 최대 10번까지. 셸에서 오버라이드 가능.
+      RATE_LIMIT_REPLENISH: ${RATE_LIMIT_REPLENISH:-5}
+      RATE_LIMIT_BURST: ${RATE_LIMIT_BURST:-10}
+    ports:
+      # 본 앱의 8080 과 겹치지 않게 호스트에는 8090 으로 연다.
+      - "8090:8080"
+
 volumes:
   mysql-data:
   redis-data:

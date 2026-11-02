@@ -1,0 +1,31 @@
+# 컨테이너 안 포트. 호스트에는 docker-compose 가 8090 으로 노출한다.
+server:
+  port: 8080
+
+spring:
+  application:
+    name: coupon-gateway
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+            # 외부에 공개할 사용자 API만 명시하고 한도를 적용한다. 관리자와 메트릭 API는 라우팅하지 않는다.
+            # 경로를 모두 이 라우트 하나에 묶어, 한 사용자의 진입·폴링·발급·사용 요청이 버킷 하나를 같이 쓴다.
+            - id: public-user-api
+              uri: ${COUPON_SERVICE_URI:http://localhost:8080}
+              predicates:
+                - Path=/api/waiting-room/**,/api/coupons/*/issue,/api/issuances/*/use,/api/users/me/issuances
+              filters:
+                - name: RequestRateLimiter
+                  args:
+                    key-resolver: "#{@userIdKeyResolver}"
+                    # Token Bucket: 초당 replenishRate 채움, 순간 최대 burstCapacity.
+                    redis-rate-limiter.replenishRate: ${RATE_LIMIT_REPLENISH:5}
+                    redis-rate-limiter.burstCapacity: ${RATE_LIMIT_BURST:10}
+                    # 요청 1건이 쓰는 토큰 수.
+                    redis-rate-limiter.requestedTokens: 1
